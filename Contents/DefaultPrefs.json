@@ -1,0 +1,10 @@
+[
+
+        {
+                "id"      : "pref_show_reviews",
+                "label"   : "Mostrar Críticas",
+                "type":         "enum",
+                "values":       ["si", "no"],
+                "default":      "no"
+        }
+]
