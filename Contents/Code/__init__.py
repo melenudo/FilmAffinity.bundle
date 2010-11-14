@@ -2,10 +2,9 @@
 
 import re,time,string
 import datetime
-#Blacklisted
-#import difflib
 
-SOURCE = "[FilmAffinity Agent 0.8] : "
+
+SOURCE = "[FilmAffinity Agent 0.8.1] : "
 #Configuration values
 MAX_GOOGLE_PAGES = 5
 MAX_TRANSLATES = 2
@@ -287,7 +286,7 @@ class FilmAffinityAgent(Agent.Movies):
 	  			Log(SOURCE+str(result.id)+" is spanish result, trying english version")
 	  			enurl = FILMAFFINITY_EN_DETAIL_URL % result.id
 	  			title = getTitleFromUrl(enurl)
-	  			if title:
+	  			if title is not None:
 		  			r = {"unescapedUrl":enurl,"titleNoFormatting":title}
 		  			responses.append(r)
 	  			checks += 1
