@@ -19,7 +19,7 @@ POSTER_TYPES = {u"Poster / Imagen Principal España" : 0,u"Posters España" : 1,
 ART_TYPES = {u"Wallpapers España" : 0, "Wallpapers" : 1, u"Promo España" : 2, "Promo" : 3, u"default España" : 4 , "default" : 5}
 
 BINGSEARCH_URL   = 'http://api.bing.net/json.aspx?AppId=F1BE9EEA086577A2F3F4818DECFD82AB324066AA&Version=2.2&Query=%s&Sources=web&Web.Count=8&JsonType=raw'
-GOOGLESEARCH_URL = "http://ajax.googleapis.com/ajax/services/search/web?v=1.0&rsz=large&start=%d&oe=utf-8&ie=utf-8&q=%s"
+GOOGLESEARCH_URL = "http://ajax.googleapis.com/ajax/services/search/web?v=1.0&userip=%s&rsz=large&start=%d&oe=utf-8&ie=utf-8&q=%s"
 TMDB_GETINFO_IMDB = 'http://api.themoviedb.org/2.1/Movie.imdbLookup/en/json/a3dc111e66105f6387e99393813ae4d5/%s'
 FILMAFFINITY_DETAIL_URL="http://www.filmaffinity.com/es/film%s.html"
 FILMAFFINITY_EN_DETAIL_URL="http://www.filmaffinity.com/en/film%s.html"
@@ -416,7 +416,7 @@ class FilmAffinityAgent(Agent.Movies):
 	finalURL = None
 	englishids={}
 	for i in range(MAX_GOOGLE_PAGES):
-		finalURL = GOOGLESEARCH_URL % (currentIdx,q)
+		finalURL = GOOGLESEARCH_URL % (getPublicIP(),currentIdx,q)
 		response = JSON.ObjectFromURL(finalURL)
 		currentIdx,score = self.checkGoogleResponse(response,umedia_name,media,results,score,lang,englishids)
 		if currentIdx == 0:
@@ -695,7 +695,7 @@ def origTitleToImdb(metadata):
 			finalURL = None
 		
 			for i in range(MAX_GOOGLE_PAGES):
-				finalURL = GOOGLESEARCH_URL % (currentIdx,q)
+				finalURL = GOOGLESEARCH_URL % (getPublicIP(),currentIdx,q)
 				response = JSON.ObjectFromURL(finalURL)
 				results = response["responseData"]["results"]
 				if len(results)>0:
@@ -843,3 +843,11 @@ def mapvalues(function,values):
 	for v in values:
 		result.append(function(v))
 	return result
+
+def getPublicIP():
+	try:
+		ip = HTTP.Request('http://plexapp.com/ip.php').content.strip()
+		return ip
+	except Exception, e:
+		Log(SOURCE+"Can't get public IP: "+str(e))
+		return None
