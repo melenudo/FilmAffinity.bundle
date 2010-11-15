@@ -850,4 +850,4 @@ def getPublicIP():
 		return ip
 	except Exception, e:
 		Log(SOURCE+"Can't get public IP: "+str(e))
-		return None
+		return ""
