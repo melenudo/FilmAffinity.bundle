@@ -4,9 +4,10 @@ import re,time,string
 import datetime
 
 
-SOURCE = "[FilmAffinity Agent 0.8.1] : "
+SOURCE = "[FilmAffinity Agent 0.8.2] : "
 #Configuration values
-MAX_GOOGLE_PAGES = 5
+SLEEP_GOOGLE_REQUEST = 0.5
+MAX_GOOGLE_PAGES = 2
 MAX_TRANSLATES = 2
 MAX_RECHECK = 3
 POOR_RESULT = 90
@@ -307,6 +308,9 @@ class FilmAffinityAgent(Agent.Movies):
 
 
   def checkGoogleResponse(self,response,umedia_name,media,results,score,lang,englishids):
+	if response is None:
+		return (0,score)
+	
 	responses = response["responseData"]["results"]
 	nr = len(results)
 	if len(responses)>0:
@@ -416,8 +420,7 @@ class FilmAffinityAgent(Agent.Movies):
 	finalURL = None
 	englishids={}
 	for i in range(MAX_GOOGLE_PAGES):
-		finalURL = GOOGLESEARCH_URL % (getPublicIP(),currentIdx,q)
-		response = JSON.ObjectFromURL(finalURL)
+		response = google(currentIdx,q)
 		currentIdx,score = self.checkGoogleResponse(response,umedia_name,media,results,score,lang,englishids)
 		if currentIdx == 0:
 			break
@@ -692,11 +695,11 @@ def origTitleToImdb(metadata):
 			q = String.Quote('"' + origtitle.encode("utf-8") + ' (' + str(year) + ')"', usePlus=True) + "+site:imdb.com"
 			
 			currentIdx = 0
-			finalURL = None
 		
 			for i in range(MAX_GOOGLE_PAGES):
-				finalURL = GOOGLESEARCH_URL % (getPublicIP(),currentIdx,q)
-				response = JSON.ObjectFromURL(finalURL)
+				response = google(currentIdx,q)
+				if response is None:
+					return None
 				results = response["responseData"]["results"]
 				if len(results)>0:
 					for result in response["responseData"]["results"]:
@@ -851,3 +854,11 @@ def getPublicIP():
 	except Exception, e:
 		Log(SOURCE+"Can't get public IP: "+str(e))
 		return ""
+
+def google(currentIdx,q):
+	finalURL = GOOGLESEARCH_URL % (getPublicIP(),currentIdx,q)
+	response = JSON.ObjectFromURL(finalURL,sleep=0.5)
+	if response["responseStatus"] != 200:
+		Log(SOURCE+"Error in Google search: "+response["responseDetails"])
+		return None
+	return response
