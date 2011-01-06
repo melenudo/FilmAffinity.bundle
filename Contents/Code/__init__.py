@@ -4,7 +4,7 @@ import re,time,string
 import datetime
 
 
-SOURCE = "[FilmAffinity Agent 0.8.2] : "
+SOURCE = "[FilmAffinity Agent 0.8.3] : "
 #Configuration values
 SLEEP_GOOGLE_REQUEST = 0.5
 MAX_GOOGLE_PAGES = 2
@@ -857,7 +857,7 @@ def getPublicIP():
 
 def google(currentIdx,q):
 	finalURL = GOOGLESEARCH_URL % (getPublicIP(),currentIdx,q)
-	response = JSON.ObjectFromURL(finalURL,sleep=0.5)
+	response = JSON.ObjectFromURL(finalURL,sleep=SLEEP_GOOGLE_REQUEST)
 	if response["responseStatus"] != 200:
 		Log(SOURCE+"Error in Google search: "+response["responseDetails"])
 		return None
