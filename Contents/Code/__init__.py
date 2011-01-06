@@ -5,12 +5,14 @@ import datetime
 
 
 SOURCE = "[FilmAffinity Agent 0.8.3] : "
+
 #Configuration values
 SLEEP_GOOGLE_REQUEST = 0.5
 MAX_GOOGLE_PAGES = 2
 MAX_TRANSLATES = 2
 MAX_RECHECK = 3
 POOR_RESULT = 90
+
 #Pref keys
 PREF_REVIEWS = "pref_show_reviews"
 PREF_REVIEWS_SI = "si"
@@ -22,6 +24,7 @@ ART_TYPES = {u"Wallpapers España" : 0, "Wallpapers" : 1, u"Promo España" : 2, 
 BINGSEARCH_URL   = 'http://api.bing.net/json.aspx?AppId=F1BE9EEA086577A2F3F4818DECFD82AB324066AA&Version=2.2&Query=%s&Sources=web&Web.Count=8&JsonType=raw'
 GOOGLESEARCH_URL = "http://ajax.googleapis.com/ajax/services/search/web?v=1.0&userip=%s&rsz=large&start=%d&oe=utf-8&ie=utf-8&q=%s"
 TMDB_GETINFO_IMDB = 'http://api.themoviedb.org/2.1/Movie.imdbLookup/en/json/a3dc111e66105f6387e99393813ae4d5/%s'
+#FilmAffinity URLs
 FILMAFFINITY_DETAIL_URL="http://www.filmaffinity.com/es/film%s.html"
 FILMAFFINITY_EN_DETAIL_URL="http://www.filmaffinity.com/en/film%s.html"
 FILMAFFINITY_IMAGES_URL="http://www.filmaffinity.com/es/filmimages.php?movie_id=%s"
@@ -45,14 +48,18 @@ class DetailDataHandler():
 	def getScope(self):
 		return self.scope
 
+	#Atomic handler only stops when is out of scope
+	def isAtomic(self):
+		return False
+
 class ReviewsHandler(DetailDataHandler):
 	def __init__(self,scope=None):
 		self.value = None
 		self.scope = scope
 		self.pt = re.compile(r" [ ]+")
-   
-												  
+   												  
 	def handle(self,data):
+		#Log(SOURCE+data)
 		svalue = data.strip()
 		svalue = svalue.replace("\r\n","")
 		svalue = self.pt.sub(" ",svalue)
@@ -69,6 +76,10 @@ class ReviewsHandler(DetailDataHandler):
 			self.value = svalue
 		return True
 
+	def isAtomic(self):
+		return True
+
+
 class DetailAttrsHandler():
 	def __init__(self,scope=None):
 	   self.scope = scope
@@ -81,6 +92,9 @@ class DetailAttrsHandler():
 	
 	def getScope(self):
 		return self.scope
+		
+	def isAtomic(self):
+		return False
 
 class MainPosterHandler(DetailAttrsHandler):
 	def __init__(self,scope=None):
@@ -171,6 +185,7 @@ class DetailHTMLParser():
 		self.attrs=attrs
 		self.tags=tags
 		self.currentDetail=None
+		self.currentAtomic = False
 		self.currentElement=None
 				  
 	def parse(self,urlr):
@@ -187,18 +202,21 @@ class DetailHTMLParser():
 		return result
    
    
-	def startProcessing(self,element,scope):
-		if scope:
+	def startProcessing(self,element,scope,atomic):
+		if scope != None:
 			#Looking for scope
 			parent = element.getparent()
 			self.currentElement = None
+			self.currentAtomic = False
 			while parent is not None:
 				if parent.tag.lower()==scope:
 					self.currentElement = parent
+					self.currentAtomic = atomic
 					break
 				parent = parent.getparent()
 		else:
 			self.currentElement = element
+			self.currentAtomic = False
 			
    
 	def isProcessing(self):
@@ -207,6 +225,7 @@ class DetailHTMLParser():
 	def stopProcessing(self):
 		#Log("[FilmAffinity Agent] : **Stop")
 		self.currentElement = None
+		self.currentAtomic = False
 				  
 	def isInProcessingScope(self,element):
 		if self.currentElement is not None:
@@ -221,7 +240,8 @@ class DetailHTMLParser():
 				  
    
 	def handle(self,element):
-		if self.attrs:
+		#Log("[FilmAffinity Agent] : Atomic: "+str(self.currentAtomic))
+		if self.attrs and (not self.currentAtomic):
 			for a,va in element.attrib.items():
 				if a in self.attrs:
 					vd = self.attrs[a]
@@ -229,14 +249,14 @@ class DetailHTMLParser():
 						#Log("[FilmAffinity Agent] : Attribute found: "+a+"="+va)
 						self.currentDetail = vd[va]
 						self.stopProcessing()
-		if self.tags:
+		if self.tags and (not self.currentAtomic):
 			tag = element.tag
 			if tag in self.tags:
 				#Log("[FilmAffinity Agent] : Tag Found: " + tag)
 				self.currentDetail = self.tags[tag]
 				self.stopProcessing()
 		text = element.text
-		if (text!=None) and (text in self.details):
+		if (text!=None) and (text in self.details) and (not self.currentAtomic):
 			#Log("[FilmAffinity Agent] : Detail found: "+text)
 			self.currentDetail = text
 			self.stopProcessing()
@@ -250,7 +270,7 @@ class DetailHTMLParser():
 							self.currentDetail = None						  
 							self.stopProcessing()
 						else:
-							self.startProcessing(element,handler.getScope())
+							self.startProcessing(element,handler.getScope(),handler.isAtomic())
 					elif isinstance(handler,DetailDataHandler):
 						#Log("[FilmAffinity Agent] : handle text: ",text)
 						if text==None:
@@ -262,7 +282,7 @@ class DetailHTMLParser():
 								self.currentDetail = None						  
 								self.stopProcessing()
 							else:
-								self.startProcessing(element,handler.getScope())
+								self.startProcessing(element,handler.getScope(),handler.isAtomic())
 				else:
 					self.currentDetail = None						  
 					self.stopProcessing()
