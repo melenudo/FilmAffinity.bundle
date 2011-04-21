@@ -4,7 +4,7 @@ import re,time,string
 import datetime
 
 
-SOURCE = "[FilmAffinity Agent 0.8.3] : "
+SOURCE = "[FilmAffinity Agent 0.8.4] : "
 
 #Configuration values
 SLEEP_GOOGLE_REQUEST = 0.5
@@ -17,6 +17,11 @@ POOR_RESULT = 90
 PREF_REVIEWS = "pref_show_reviews"
 PREF_REVIEWS_SI = "si"
 PREF_REVIEWS_NO = "no"
+
+PREF_IMGS = "pref_imgs"
+PREF_IMGS_FA_ELSE_MDB = "FilmAffinity sino TheMovieDB"
+PREF_IMGS_FA = "FilmAffinity"
+PREF_IMGS_MDB = "TheMovieDB"
 
 POSTER_TYPES = {u"Poster / Imagen Principal España" : 0,u"Posters España" : 1,"Poster / Imagen Principal" : 2, "Posters" :3}
 ART_TYPES = {u"Wallpapers España" : 0, "Wallpapers" : 1, u"Promo España" : 2, "Promo" : 3, u"default España" : 4 , "default" : 5}
@@ -295,6 +300,9 @@ def Start():
 class FilmAffinityAgent(Agent.Movies):
   name = 'FilmAffinity'
   languages = ['es']
+  primary_provider = True
+  accepts_from = ['com.plexapp.agents.localmedia']
+
 
   def recheckWithENResults(self,umedia_name,media,results,lang,englishids):
   	if len(results) > 0 and results[0].score<POOR_RESULT:
@@ -584,66 +592,80 @@ class FilmAffinityAgent(Agent.Movies):
 	for i in range(len(ART_TYPES)):
 		arts.append([])
 	
-	if himg:
+	if himg is not None:
 		imgs.insert(0,[limg,himg,"Poster / Imagen Principal",""])
 	else:
 		Log(SOURCE+"No main poster in FilmAffinity")
 		
-	hasPosters = False
-	
-	for img in imgs:
-		imgtype = img[2]
-		imgcountry = img[3]
-		imgtypecountry = None
-		if imgtype not in POSTER_TYPES and imgtype not in ART_TYPES:
-			imgtype = "default"
-			
-		if imgcountry:
-			imgtypecountry = imgtype+" "+imgcountry
-
-		if imgtypecountry and imgtypecountry in POSTER_TYPES:
-			hasPosters = True
-			group = POSTER_TYPES[imgtypecountry]
-			posters[group].append(img)
-		elif imgtypecountry and imgtypecountry in ART_TYPES:
-			group = ART_TYPES[imgtypecountry]
-			arts[group].append(img)
-		elif imgtype in POSTER_TYPES:
-			hasPosters = True
-			group = POSTER_TYPES[imgtype]
-			posters[group].append(img)
-		elif imgtype in ART_TYPES:
-			group = ART_TYPES[imgtype]
-			arts[group].append(img)
-	
 	if len(imgs) == 0:
 		Log(SOURCE+"No images in FilmAffinity")
+
+	hasPosters = False
+	hasArt = False
 	
-	hasArt = (len(arts[ART_TYPES[u"Wallpapers España"]]) + len(arts[ART_TYPES["Wallpapers"]])) > 0
+	if (Prefs[PREF_IMGS]==PREF_IMGS_FA_ELSE_MDB) or (Prefs[PREF_IMGS]==PREF_IMGS_FA):
+		for img in imgs:
+			imgtype = img[2]
+			imgcountry = img[3]
+			imgtypecountry = None
+			if imgtype not in POSTER_TYPES and imgtype not in ART_TYPES:
+				imgtype = "default"
+				
+			if imgcountry is not None:
+				imgtypecountry = imgtype+" "+imgcountry
+	
+			if (imgtypecountry is not None) and (imgtypecountry in POSTER_TYPES):
+				hasPosters = True
+				group = POSTER_TYPES[imgtypecountry]
+				posters[group].append(img)
+			elif (imgtypecountry is not None) and (imgtypecountry in ART_TYPES):
+				group = ART_TYPES[imgtypecountry]
+				arts[group].append(img)
+			elif imgtype in POSTER_TYPES:
+				hasPosters = True
+				group = POSTER_TYPES[imgtype]
+				posters[group].append(img)
+			elif imgtype in ART_TYPES:
+				group = ART_TYPES[imgtype]
+				arts[group].append(img)
+		hasArt = (len(arts[ART_TYPES[u"Wallpapers España"]]) + len(arts[ART_TYPES["Wallpapers"]])) > 0
 
 	# Try ThemovieDB if FilmAffinity has no images
-	getImagesFromTheMovieDB(metadata,hasPosters,hasArt,posters,arts)
+	if (Prefs[PREF_IMGS]==PREF_IMGS_FA_ELSE_MDB) or (Prefs[PREF_IMGS]==PREF_IMGS_MDB):
+		try:
+			getImagesFromTheMovieDB(metadata,hasPosters,hasArt,posters,arts)
+		except Exception, e:
+			Log(SOURCE+"Can't fetch images from TheMovieDB: "+str(e))
+		
 	
 	#Insert posters in metadata
 	i = 1
+	valid_names = list()
 	for group in posters:
 		for img in group:
 			imgsurl = img[0]
 			imglurl = img[1]
-			addPoster(metadata,imgsurl,imglurl,i)
+			addPoster(metadata,imgsurl,imglurl,i,valid_names)
 			i += 1
 	if i==1:
 		Log(SOURCE+"Ups!! I can't find a poster. Using low res poster from FilmAffinity")
-		addPoster(metadata,limg,limg,1)
+		addPoster(metadata,limg,limg,1,valid_names)
+
+	metadata.posters.validate_keys(valid_names)
+	
 
 	#Insert art in metadata
 	i = 1
+	valid_names = list()
 	for group in arts:
 		for img in group:
 			imgsurl = img[0]
 			imglurl = img[1]
-			addArt(metadata,imgsurl,imglurl,i)
+			addArt(metadata,imgsurl,imglurl,i,valid_names)
 			i += 1
+
+	metadata.art.validate_keys(valid_names)
+
 # I've got better information if I don't catch the exception
 #	except Exception, e:
 #		Log("[FilmAffinity Agent] : Exception "+str(e))
@@ -813,18 +835,20 @@ def parseTitle(title):
 	return (title, None)
 
 
-def addPoster(metadata,surl,lurl,order):
+def addPoster(metadata,surl,lurl,order,valid_names):
 	try:
 #		Log(surl + ": "+str(order))
 		metadata.posters[lurl] = Proxy.Preview(HTTP.Request(surl, cacheTime=CACHE_1MONTH), sort_order = order)
+		valid_names.append(lurl)
 	except Exception, e:
 		Log(SOURCE+"Exception "+str(e))
 		Log(SOURCE+"Error when fetching poster image "+surl)
 
-def addArt(metadata,surl,lurl,order):
+def addArt(metadata,surl,lurl,order,valid_names):
 	try:
 #		Log(surl + ": "+str(order))
 		metadata.art[lurl] = Proxy.Preview(HTTP.Request(surl, cacheTime=CACHE_1MONTH), sort_order = order)
+		valid_names.append(lurl)
 	except Exception, e:
 		Log(SOURCE+"Exception "+str(e))
 		Log(SOURCE+"Error when fetching art "+surl)
