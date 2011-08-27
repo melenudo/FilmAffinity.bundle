@@ -246,7 +246,7 @@ class DetailHTMLParser():
    
 	def handle(self,element):
 		#Log("[FilmAffinity Agent] : Atomic: "+str(self.currentAtomic))
-		if self.attrs and (not self.currentAtomic):
+		if (self.attrs is not None) and (not self.currentAtomic):
 			for a,va in element.attrib.items():
 				if a in self.attrs:
 					vd = self.attrs[a]
@@ -254,7 +254,7 @@ class DetailHTMLParser():
 						#Log("[FilmAffinity Agent] : Attribute found: "+a+"="+va)
 						self.currentDetail = vd[va]
 						self.stopProcessing()
-		if self.tags and (not self.currentAtomic):
+		if (self.tags is not None) and (not self.currentAtomic):
 			tag = element.tag
 			if tag in self.tags:
 				#Log("[FilmAffinity Agent] : Tag Found: " + tag)
@@ -267,7 +267,7 @@ class DetailHTMLParser():
 			self.stopProcessing()
 		elif self.currentDetail:
 			handler = self.details[self.currentDetail]
-			if handler:
+			if handler is not None:
 				if not self.isProcessing() or self.isInProcessingScope(element):
 					if isinstance(handler,DetailAttrsHandler):
 						#Log("[FilmAffinity Agent] : handle attributes: ",element.attrib)
@@ -381,11 +381,11 @@ class FilmAffinityAgent(Agent.Movies):
   def check(self,umedia_name,media_year,results,score,lang,englishids,url,title):
 	#Log("[FilmAffinity Agent] : "+title+" founded! Is a FilmAffinity result?")
 	name, year = parseTitle(title)
-	if name:
+	if name is not None:
 		#The plugin support media names in english and spanish
 		p = re.compile(r'http://www\.filmaffinity\.com/(es|en)(/ud)?/film([0-9]*)\.html')
 		m = p.match(url)
-		if m:
+		if m is not None:
 			id = m.group(3)
 			scorePenalty = 0
 			#Match penalization
@@ -400,9 +400,9 @@ class FilmAffinityAgent(Agent.Movies):
 				Log(SOURCE+"Match Longest "+upname+" ratio="+str(mratio))
 				
 			scorePenalty += (1-mratio)*25
-			if year:
+			if year is not None:
 				if mratio == 1.0:
-					if media_year and int(media_year) == int(year):
+					if (media_year is not None) and (int(media_year) == int(year)):
 						#Perfect gain score
 						scorePenalty = -25
 					
@@ -432,7 +432,7 @@ class FilmAffinityAgent(Agent.Movies):
 	return False
   
   def search(self, results, media, lang):
-	if media.year:
+	if media.year is not None:
 		searchYear = ' (' + str(media.year) + ')'
 	else:
 		searchYear = ''
@@ -682,7 +682,7 @@ def getImagesFromTheMovieDB(metadata,hasposter,hasart,posters,arts):
 	proxy = Proxy.Preview
 	if not hasposter or not hasart:
 		imdbid = origTitleToImdb(metadata)
-		if imdbid:
+		if imdbid is not None:
 			finalURL = TMDB_GETINFO_IMDB % imdbid
 			tmdb_dict = JSON.ObjectFromURL(finalURL)[0]
 			#Log(tmdb_dict)
@@ -746,7 +746,7 @@ def origTitleToImdb(metadata):
 				if len(results)>0:
 					for result in response["responseData"]["results"]:
 						m = re.match(r'http://www\.imdb\.com/title/tt([0-9]+)/',result["url"])
-						if m:
+						if m is not None:
 							imdbid = m.group(1)
 							imdbtitle = result["titleNoFormatting"]
 							Log(SOURCE+"IMDB result, title="+imdbtitle+" id="+imdbid)
@@ -818,7 +818,7 @@ def splitTitle(title):
 	p = re.compile(r'\(.*?\)')
 	result.append(p.sub('', title))
 	ts = p.findall(title)
-	if ts:
+	if ts is not None:
 		for t in ts:
 			result.append(t[1:-1])
 	return result
@@ -827,7 +827,7 @@ def parseTitle(title):
 	# Parse out title, year, and extra.
 	titleRx = r'((.)*) \(([0-9][0-9][0-9][0-9])'
 	m = re.match(titleRx, title)
-	if m:
+	if m is not None:
 		name = m.group(1)
 		year = int(m.group(3))
 		return (name, year)
@@ -875,9 +875,9 @@ def getTitleFromUrl(url):
 
 def translate(result,lang):
 	title = getTitleFromUrl(FILMAFFINITY_DETAIL_URL % result.id)
-	if title:
+	if title is not None:
 		name, year = parseTitle(title)		
-		if name:
+		if name is not None:
 			result.name = name
 			result.lang = lang
 			return True
