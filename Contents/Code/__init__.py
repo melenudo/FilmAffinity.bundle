@@ -4,7 +4,7 @@ import re,time,string
 import datetime
 
 
-SOURCE = "[FilmAffinity Agent 0.8.4] : "
+SOURCE = "[FilmAffinity Agent 0.8.5] : "
 
 #Configuration values
 SLEEP_GOOGLE_REQUEST = 0.5
@@ -56,6 +56,22 @@ class DetailDataHandler():
 	#Atomic handler only stops when is out of scope
 	def isAtomic(self):
 		return False
+
+class NumberHandler(DetailDataHandler):
+	def __init__(self,scope=None):
+		self.value = None
+		self.scope = scope
+		self.pt = re.compile(r"([0-9]+)")
+   												  
+	def handle(self,data):
+		m = self.pt.search(data)
+		if m is not None:
+			self.value = m.group(1)
+			return False
+		return True
+
+	def isAtomic(self):
+		return True
 
 class ReviewsHandler(DetailDataHandler):
 	def __init__(self,scope=None):
@@ -245,7 +261,7 @@ class DetailHTMLParser():
 				  
    
 	def handle(self,element):
-		#Log("[FilmAffinity Agent] : Atomic: "+str(self.currentAtomic))
+		#Log(SOURCE+"element:"+element.tag+" text:"+str(element.text)+" tail:"+str(element.tail))
 		if (self.attrs is not None) and (not self.currentAtomic):
 			for a,va in element.attrib.items():
 				if a in self.attrs:
@@ -265,7 +281,7 @@ class DetailHTMLParser():
 			#Log("[FilmAffinity Agent] : Detail found: "+text)
 			self.currentDetail = text
 			self.stopProcessing()
-		elif self.currentDetail:
+		elif self.currentDetail is not None:
 			handler = self.details[self.currentDetail]
 			if handler is not None:
 				if not self.isProcessing() or self.isInProcessingScope(element):
@@ -277,11 +293,9 @@ class DetailHTMLParser():
 						else:
 							self.startProcessing(element,handler.getScope(),handler.isAtomic())
 					elif isinstance(handler,DetailDataHandler):
-						#Log("[FilmAffinity Agent] : handle text: ",text)
-						if text==None:
+						if text==None or len(text.strip())==0:
 							#The element text is empty, trying tail
 							text = element.tail
-							#Log(SOURCE+"handle tail: "+str(text))
 						if text!=None:
 							if not handler.handle(text):
 								self.currentDetail = None						  
@@ -505,8 +519,8 @@ class FilmAffinityAgent(Agent.Movies):
 	reviews = (Prefs[PREF_REVIEWS]==PREF_REVIEWS_SI)
 
 #	try:
-	attrsMD = {"style" : {"color:#990000; font-size:22px; font-weight: bold;" : u"VALORACIÓN"},"class" : {"lightbox" : "POSTER"}}
-	detailsMD = {"TITULO" : DetailDataHandler(),u"TÍTULO ORIGINAL" : DetailDataHandler("tr"),u"AÑO" : DetailDataHandler(),u"DURACIÓN" : DetailDataHandler(),u"PAÍS" : None,"DIRECTOR" : NamesHandler("tr"),u"GUIÓN" : NamesHandler("tr"),u"MÚSICA" : NamesHandler("tr"),u"FOTOGRAFÍA" : NamesHandler("tr"),"REPARTO" : NamesHandler("tr"),"PRODUCTORA" : StudiosHandler("tr"),u"GÉNERO" : NamesHandler("tr"),"SINOPSIS" : DetailDataHandler("tr"),u"VALORACIÓN" : DetailDataHandler(),"POSTER" : MainPosterHandler(),"LOWPOSTER" : LowResPosterHandler()}
+	attrsMD = {"style" : {"color:#990000; font-size:22px; font-weight: bold;" : u"VALORACIÓN","margin: 4px 0; color:#990000; font-size:22px; font-weight: bold;" : u"VALORACIÓN"},"class" : {"lightbox" : "POSTER"}}
+	detailsMD = {"TITULO" : DetailDataHandler(),u"TÍTULO ORIGINAL" : DetailDataHandler("tr"),u"AÑO" : NumberHandler(),u"DURACIÓN" : NumberHandler(),u"PAÍS" : None,"DIRECTOR" : NamesHandler("tr"),u"GUIÓN" : NamesHandler("tr"),u"MÚSICA" : NamesHandler("tr"),u"FOTOGRAFÍA" : NamesHandler("tr"),"REPARTO" : NamesHandler("tr"),"PRODUCTORA" : StudiosHandler("tr"),u"GÉNERO" : NamesHandler("tr"),"SINOPSIS" : DetailDataHandler("tr"),u"VALORACIÓN" : DetailDataHandler(),"POSTER" : MainPosterHandler(),"LOWPOSTER" : LowResPosterHandler()}
 	
 	if reviews:
 		detailsMD[u"CRÍTICAS"] = ReviewsHandler("tr")
@@ -546,7 +560,12 @@ class FilmAffinityAgent(Agent.Movies):
 	#title
 	metadata.title = cleanFATitle(detailsMD["TITULO"].getValue())
 	#year
-	metadata.year = int(detailsMD[u"AÑO"].getValue())
+	stryear = detailsMD[u"AÑO"].getValue()
+	if stryear is not None:
+		metadata.year = int(stryear)
+	else:
+		metadata.year = 0
+		
 	#genre
 	metadata.genres.clear()
 	for genre in detailsMD[u"GÉNERO"].getValue():
@@ -571,7 +590,12 @@ class FilmAffinityAgent(Agent.Movies):
 		if reviewText is not None:
 			metadata.summary = metadata.summary + reviewText
 	#rating
-	metadata.rating = float(string.replace(detailsMD[u"VALORACIÓN"].getValue(),",","."))
+	strrating = detailsMD[u"VALORACIÓN"].getValue()
+	if strrating is not None:
+		metadata.rating = float(string.replace(strrating,",","."))
+	else:
+		metadata.rating = 0.0
+		
 	#roles
 	metadata.roles.clear()
 	for person in detailsMD["REPARTO"].getValue():
