@@ -4,7 +4,7 @@ import re,time,string
 import datetime
 
 
-SOURCE = "[FilmAffinity Agent 0.8.5] : "
+SOURCE = "[FilmAffinity Agent 0.8.6] : "
 
 #Configuration values
 SLEEP_GOOGLE_REQUEST = 0.5
@@ -28,7 +28,7 @@ ART_TYPES = {u"Wallpapers España" : 0, "Wallpapers" : 1, u"Promo España" : 2, 
 
 BINGSEARCH_URL   = 'http://api.bing.net/json.aspx?AppId=F1BE9EEA086577A2F3F4818DECFD82AB324066AA&Version=2.2&Query=%s&Sources=web&Web.Count=8&JsonType=raw'
 GOOGLESEARCH_URL = "http://ajax.googleapis.com/ajax/services/search/web?v=1.0&userip=%s&rsz=large&start=%d&oe=utf-8&ie=utf-8&q=%s"
-TMDB_GETINFO_IMDB = 'http://api.themoviedb.org/2.1/Movie.imdbLookup/en/json/a3dc111e66105f6387e99393813ae4d5/%s'
+TMDB_GETINFO_IMDB = 'http://api.themoviedb.org/2.1/Movie.imdbLookup/en/json/a3dc111e66105f6387e99393813ae4d5/tt%s'
 #FilmAffinity URLs
 FILMAFFINITY_DETAIL_URL="http://www.filmaffinity.com/es/film%s.html"
 FILMAFFINITY_EN_DETAIL_URL="http://www.filmaffinity.com/en/film%s.html"
