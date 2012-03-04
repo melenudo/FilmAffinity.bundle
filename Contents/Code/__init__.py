@@ -4,7 +4,7 @@ import re,time,string
 import datetime
 
 
-SOURCE = "[FilmAffinity Agent 0.8.6] : "
+SOURCE = "[FilmAffinity Agent 0.8.7] : "
 
 #Configuration values
 SLEEP_GOOGLE_REQUEST = 0.5
@@ -378,7 +378,7 @@ class FilmAffinityAgent(Agent.Movies):
 		return (0,score)
 
   def checkBingResponse(self,response,umedia_name,media,results,score,lang,englishids):
-	if "Web" in response["SearchResponse"]:
+	if response is not None:
 		web = response["SearchResponse"]["Web"]
 		if web["Total"]>0:
 			responses = web["Results"]
@@ -387,8 +387,6 @@ class FilmAffinityAgent(Agent.Movies):
 				title = unescapeHTML(result["Title"])
 				if self.check(umedia_name,media.year,results,score,lang,englishids,url,title):
 					score = score - 1
-	else:
-		Log(SOURCE+"BING error:"+str(response));
 	return (0,score)
 
 
@@ -461,16 +459,18 @@ class FilmAffinityAgent(Agent.Movies):
 	currentIdx = 0
 	finalURL = None
 	englishids={}
-	for i in range(MAX_GOOGLE_PAGES):
-		response = google(currentIdx,q)
-		currentIdx,score = self.checkGoogleResponse(response,umedia_name,media,results,score,lang,englishids)
-		if currentIdx == 0:
-			break
-
+	#We're going to try Google
 	try:
-		q = String.Quote(umedia_name.encode('utf-8') + searchYear, usePlus=True) + "+site:filmaffinity.com"
-		finalURL = BINGSEARCH_URL % q
-		response = JSON.ObjectFromURL(finalURL)
+		for i in range(MAX_GOOGLE_PAGES):
+			response = google(currentIdx,q)
+			currentIdx,score = self.checkGoogleResponse(response,umedia_name,media,results,score,lang,englishids)
+			if currentIdx == 0:
+				break
+	except Exception, e:
+		Log(SOURCE+"Got an error when proccessing Google results: "+str(e))
+	#Now use bing search engine
+	try:
+		response = bing(q)
 		self.checkBingResponse(response,umedia_name,media,results,score,lang,englishids)
 
 		results.Sort('score', descending=True)
@@ -750,6 +750,14 @@ def getImagesFromTheMovieDB(metadata,hasposter,hasart,posters,arts):
 		else:
 			Log(SOURCE+"can't find IMDB ID")
 
+def checkImdb(url):
+	m = re.match(r'http://www\.imdb\.com/title/tt([0-9]+)/',url)
+	if m is not None:
+		imdbid = m.group(1)
+		return imdbid
+	return None
+	
+
 def origTitleToImdb(metadata):
 	origtitles = splitTitle(metadata.original_title)
 	years = [metadata.year,metadata.year-1,metadata.year+1]
@@ -759,34 +767,51 @@ def origTitleToImdb(metadata):
 			Log(SOURCE+"Searching IMDB ID for "+origtitle+" ("+str(year)+")")
 			
 			q = String.Quote('"' + origtitle.encode("utf-8") + ' (' + str(year) + ')"', usePlus=True) + "+site:imdb.com"
-			
-			currentIdx = 0
-		
-			for i in range(MAX_GOOGLE_PAGES):
-				response = google(currentIdx,q)
-				if response is None:
-					return None
-				results = response["responseData"]["results"]
-				if len(results)>0:
-					for result in response["responseData"]["results"]:
-						m = re.match(r'http://www\.imdb\.com/title/tt([0-9]+)/',result["url"])
-						if m is not None:
-							imdbid = m.group(1)
-							imdbtitle = result["titleNoFormatting"]
-							Log(SOURCE+"IMDB result, title="+imdbtitle+" id="+imdbid)
-							return imdbid
-			
-					cursor = response["responseData"]["cursor"]
-				
-					pages = cursor["pages"]
-					currentIdx = cursor["currentPageIndex"]+1
-					if currentIdx >= len(pages):
-						#No more results
+
+			try:
+				currentIdx = 0
+				for i in range(MAX_GOOGLE_PAGES):
+					response = google(currentIdx,q)
+					if response is None:
 						break
-					currentIdx = int(pages[currentIdx]["start"])
-				else:
-					break
-	
+					results = response["responseData"]["results"]
+					if len(results)>0:
+						for result in response["responseData"]["results"]:
+							imdbid = checkImdb(result["url"])
+							if imdbid is not None:
+								imdbtitle = result["titleNoFormatting"]
+								Log(SOURCE+"Google IMDB result, title="+imdbtitle+" id="+imdbid)
+								return imdbid
+				
+						cursor = response["responseData"]["cursor"]
+					
+						pages = cursor["pages"]
+						currentIdx = cursor["currentPageIndex"]+1
+						if currentIdx >= len(pages):
+							#No more results
+							break
+						currentIdx = int(pages[currentIdx]["start"])
+					else:
+						break
+			except Exception, e:
+				Log(SOURCE+"Got an error when proccessing Google results: "+str(e))
+			
+			Log(SOURCE+"Problems in Google, trying Bing…")
+			try:
+				response = bing(q)
+				if response is not None:
+					web = response["SearchResponse"]["Web"]
+					if web["Total"]>0:
+						responses = web["Results"]
+						for result in responses:
+							imdbid = checkImdb(result["Url"])
+							if imdbid is not None:
+								imdbtitle = unescapeHTML(result["Title"])
+								Log(SOURCE+"Bing IMDB result, title="+imdbtitle+" id="+imdbid)
+								return imdbid
+			except Exception, e:
+				Log(SOURCE+"Got an error when proccessing Bing results: "+str(e))
+			
 	return None
 	
 def matchRatioLeven(uph1,uph2):
@@ -928,5 +953,13 @@ def google(currentIdx,q):
 	response = JSON.ObjectFromURL(finalURL,sleep=SLEEP_GOOGLE_REQUEST)
 	if response["responseStatus"] != 200:
 		Log(SOURCE+"Error in Google search: "+response["responseDetails"])
+		return None
+	return response
+
+def bing(q):
+	finalURL = BINGSEARCH_URL % q
+	response = JSON.ObjectFromURL(finalURL)
+	if "Web" not in response["SearchResponse"]:
+		Log(SOURCE+"BING error:"+str(response));
 		return None
 	return response
