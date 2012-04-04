@@ -4,7 +4,7 @@ import re,time,string
 import datetime
 
 
-SOURCE = "[FilmAffinity Agent 0.8.7] : "
+SOURCE = "[FilmAffinity Agent 0.9.0] : "
 
 #Configuration values
 SLEEP_GOOGLE_REQUEST = 0.5
@@ -23,16 +23,68 @@ PREF_IMGS_FA_ELSE_MDB = "FilmAffinity sino TheMovieDB"
 PREF_IMGS_FA = "FilmAffinity"
 PREF_IMGS_MDB = "TheMovieDB"
 
-POSTER_TYPES = {u"Poster / Imagen Principal España" : 0,u"Posters España" : 1,"Poster / Imagen Principal" : 2, "Posters" :3}
-ART_TYPES = {u"Wallpapers España" : 0, "Wallpapers" : 1, u"Promo España" : 2, "Promo" : 3, u"default España" : 4 , "default" : 5}
+#FilmAffinity Detail Section
+DETAILLABELS = {
+"es" : {
+	"title" : "TITULO",
+	"original_title" : u"TÍTULO ORIGINAL",
+	"year" : u"AÑO",
+	"running_time" : u"DURACIÓN",
+	"country" : u"PAÍS",
+	"directors" : "DIRECTOR",
+	"writers" : u"GUIÓN",
+	"composer" : u"MÚSICA",
+	"cinematographer" : u"FOTOGRAFÍA",
+	"roles" : "REPARTO",
+	"studio" : "PRODUCTORA",
+	"genres" : u"GÉNERO",
+	"summary" : "SINOPSIS",
+	"rating" : u"VALORACIÓN",
+	"mainposter" : "POSTER",
+	"mainposterpreview" : "LOWPOSTER",
+	"reviews" : u"CRÍTICAS",
+	"artwork" : "IMAGENES"
+},
+"en" : {
+	"title" : "TITLE",
+	"original_title" : "ORIGINAL TITLE",
+	"year" : "YEAR",
+	"running_time" : "RUNNING TIME",
+	"country" : "COUNTRY",
+	"directors" : "DIRECTOR",
+	"writers" : "SCREENWRITER",
+	"composer" : "COMPOSER",
+	"cinematographer" : "CINEMATOGRAPHER",
+	"roles" : "CAST",
+	"studio" : "STUDIO/PRODUCER",
+	"genres" : "GENRE",
+	"summary" : "SYNOPSIS/PLOT",
+	"rating" : "RATING",
+	"mainposter" : "POSTER",
+	"mainposterpreview" : "LOWPOSTER",
+	"reviews" : "PRO REVIEWS",
+	"artwork" : "ARTWORK"
+}}
+FILMAFFINITY_DETAIL_URL="http://www.filmaffinity.com/%s/film%s.html"
 
+#FilmAffinity Visual Section
+MAINPOSTERLABELS = {"es" : "Poster / Imagen Principal", "en" : "Poster / Main Image"}
+VISUALCOUNTRYLABELS = {"es" : u" España", "en" : ""} #In english we use the original image order (arts and posters)
+POSTER_TYPES_LG = {	"es" : {MAINPOSTERLABELS["es"]+VISUALCOUNTRYLABELS["es"] : 0,"Posters"+VISUALCOUNTRYLABELS["es"] : 1,MAINPOSTERLABELS["es"] : 2, "Posters" :3},
+					"en" : {MAINPOSTERLABELS["en"] : 0, "Posters" : 1}
+				  }
+ART_TYPES_LG = { "es" : {"Wallpapers"+VISUALCOUNTRYLABELS["es"] : 0, "Wallpapers" : 1, "Promo"+VISUALCOUNTRYLABELS["es"] : 2, "Promo" : 3, "default"+VISUALCOUNTRYLABELS["es"] : 4 , "default" : 5},
+				 "en" : {"Wallpapers" : 0, "Promo" : 1, "default" : 2}
+				}
+HASART_GROUPS = {"es" : [0,1], "en" : [0]}
+FILMAFFINITY_IMAGES_URL="http://www.filmaffinity.com/%s/filmimages.php?movie_id=%s"
+
+#Search URLs
 BINGSEARCH_URL   = 'http://api.bing.net/json.aspx?AppId=F1BE9EEA086577A2F3F4818DECFD82AB324066AA&Version=2.2&Query=%s&Sources=web&Web.Count=8&JsonType=raw'
 GOOGLESEARCH_URL = "http://ajax.googleapis.com/ajax/services/search/web?v=1.0&userip=%s&rsz=large&start=%d&oe=utf-8&ie=utf-8&q=%s"
 TMDB_GETINFO_IMDB = 'http://api.themoviedb.org/2.1/Movie.imdbLookup/en/json/a3dc111e66105f6387e99393813ae4d5/tt%s'
-#FilmAffinity URLs
-FILMAFFINITY_DETAIL_URL="http://www.filmaffinity.com/es/film%s.html"
+#English detail page (only for the search process)
 FILMAFFINITY_EN_DETAIL_URL="http://www.filmaffinity.com/en/film%s.html"
-FILMAFFINITY_IMAGES_URL="http://www.filmaffinity.com/es/filmimages.php?movie_id=%s"
 
 class DetailDataHandler():
 	def __init__(self,scope=None):
@@ -193,7 +245,7 @@ class ImageHandler(DetailDataHandler):
 		m = self.p.search(data)
 		while m is not None:
 			img = m.group(1,3,6,8)
-			self.images.append(img)
+			appendImage(self.images, *img)
 			m = self.p.search(data,m.end())
 		return False
 				  
@@ -313,7 +365,7 @@ def Start():
   
 class FilmAffinityAgent(Agent.Movies):
   name = 'FilmAffinity'
-  languages = ['es']
+  languages = ['es','en']
   primary_provider = True
   accepts_from = ['com.plexapp.agents.localmedia']
 
@@ -391,7 +443,6 @@ class FilmAffinityAgent(Agent.Movies):
 
 
   def check(self,umedia_name,media_year,results,score,lang,englishids,url,title):
-	#Log("[FilmAffinity Agent] : "+title+" founded! Is a FilmAffinity result?")
 	name, year = parseTitle(title)
 	if name is not None:
 		#The plugin support media names in english and spanish
@@ -477,7 +528,9 @@ class FilmAffinityAgent(Agent.Movies):
 	except Exception, e:
 		Log(SOURCE+"Got an error when proccessing BING results: "+str(e))
 	
-	#Last chance, recheck spanish results (only with poor scores).
+	#Last chance, recheck spanish results (only with poor scores). The Search Engine shows spanish results first (filmaffinity is more used by spanish users) but
+	#the file name, we're searching, may be in english (the content of the result page has the english title). The english file name doesn't match with the spanish title,
+	#but we can try the english version of the same result page (the title of that version is in english).
 	self.recheckWithENResults(umedia_name,media,results,lang,englishids)
 
 	results.Sort('score', descending=True)
@@ -486,12 +539,12 @@ class FilmAffinityAgent(Agent.Movies):
 
 	results.Sort('score', descending=True)
 
-	#Translate english results (if we can and only MAX_TRANSLATES)
+	#Translate results (if we can and only MAX_TRANSLATES)
 	translates = 0
 	remove = False
 	toWhack = []
 	for result in results:
-		if result.lang == "en":
+		if result.lang != lang:
 			if not remove and translate(result,lang):
 				translates += 1
 				if translates == MAX_TRANSLATES:
@@ -519,28 +572,44 @@ class FilmAffinityAgent(Agent.Movies):
 	reviews = (Prefs[PREF_REVIEWS]==PREF_REVIEWS_SI)
 
 #	try:
-	attrsMD = {"style" : {"color:#990000; font-size:22px; font-weight: bold;" : u"VALORACIÓN","margin: 4px 0; color:#990000; font-size:22px; font-weight: bold;" : u"VALORACIÓN"},"class" : {"lightbox" : "POSTER"}}
-	detailsMD = {"TITULO" : DetailDataHandler(),u"TÍTULO ORIGINAL" : DetailDataHandler("tr"),u"AÑO" : NumberHandler(),u"DURACIÓN" : NumberHandler(),u"PAÍS" : None,"DIRECTOR" : NamesHandler("tr"),u"GUIÓN" : NamesHandler("tr"),u"MÚSICA" : NamesHandler("tr"),u"FOTOGRAFÍA" : NamesHandler("tr"),"REPARTO" : NamesHandler("tr"),"PRODUCTORA" : StudiosHandler("tr"),u"GÉNERO" : NamesHandler("tr"),"SINOPSIS" : DetailDataHandler("tr"),u"VALORACIÓN" : DetailDataHandler(),"POSTER" : MainPosterHandler(),"LOWPOSTER" : LowResPosterHandler()}
+	attrsMD = {	"style" : {"color:#990000; font-size:22px; font-weight: bold;" : DETAILLABELS[lang]["rating"],"margin: 4px 0; color:#990000; font-size:22px; font-weight: bold;" : DETAILLABELS[lang]["rating"]},
+				"class" : {"lightbox" : DETAILLABELS[lang]["mainposter"]}}
+	detailsMD = {	DETAILLABELS[lang]["title"] : DetailDataHandler(),
+					DETAILLABELS[lang]["original_title"] : DetailDataHandler("tr"),
+					DETAILLABELS[lang]["year"] : NumberHandler(),
+					DETAILLABELS[lang]["running_time"] : NumberHandler(),
+					DETAILLABELS[lang]["country"] : None,
+					DETAILLABELS[lang]["directors"] : NamesHandler("tr"),
+					DETAILLABELS[lang]["writers"] : NamesHandler("tr"),
+					DETAILLABELS[lang]["composer"] : NamesHandler("tr"),
+					DETAILLABELS[lang]["cinematographer"] : NamesHandler("tr"),
+					DETAILLABELS[lang]["roles"] : NamesHandler("tr"),
+					DETAILLABELS[lang]["studio"] : StudiosHandler("tr"),
+					DETAILLABELS[lang]["genres"] : NamesHandler("tr"),
+					DETAILLABELS[lang]["summary"] : DetailDataHandler("tr"),
+					DETAILLABELS[lang]["rating"] : DetailDataHandler(),
+					DETAILLABELS[lang]["mainposter"] : MainPosterHandler(),
+					DETAILLABELS[lang]["mainposterpreview"] : LowResPosterHandler()}
 	
 	if reviews:
-		detailsMD[u"CRÍTICAS"] = ReviewsHandler("tr")
+		detailsMD[DETAILLABELS[lang]["reviews"]] = ReviewsHandler("tr")
 		
-	tagsMD = {"title" : "TITULO","img" : "LOWPOSTER"} 
+	tagsMD = {"title" : DETAILLABELS[lang]["title"],"img" : DETAILLABELS[lang]["mainposterpreview"]} 
 
-	detailsImg = {"IMAGENES" : ImageHandler()}
-	tagsImg = {"script" : "IMAGENES"} 
+	detailsImg = {DETAILLABELS[lang]["artwork"] : ImageHandler()}
+	tagsImg = {"script" : DETAILLABELS[lang]["artwork"]} 
 
 	@parallelize
 	def htmlParsers():
 		@task
 		def filmDetailParser():
-			finalURLMD = FILMAFFINITY_DETAIL_URL % mid
+			finalURLMD = FILMAFFINITY_DETAIL_URL % (lang,mid)
 			parserMD = DetailHTMLParser(details=detailsMD,attrs=attrsMD,tags=tagsMD)
 			parserMD.parse(finalURLMD)
 
 		@task
 		def filmImgsParser():
-			finalURLImg = FILMAFFINITY_IMAGES_URL % mid 
+			finalURLImg = FILMAFFINITY_IMAGES_URL % (lang,mid) 
 			parserImg = DetailHTMLParser(details=detailsImg,tags=tagsImg)
 			parserImg.parse(finalURLImg)
 			
@@ -558,9 +627,9 @@ class FilmAffinityAgent(Agent.Movies):
 #		if h:
 #			Log(h.getValue())
 	#title
-	metadata.title = cleanFATitle(detailsMD["TITULO"].getValue())
+	metadata.title = cleanFATitle(detailsMD[DETAILLABELS[lang]["title"]].getValue())
 	#year
-	stryear = detailsMD[u"AÑO"].getValue()
+	stryear = detailsMD[DETAILLABELS[lang]["year"]].getValue()
 	if stryear is not None:
 		metadata.year = int(stryear)
 	else:
@@ -568,29 +637,29 @@ class FilmAffinityAgent(Agent.Movies):
 		
 	#genre
 	metadata.genres.clear()
-	for genre in detailsMD[u"GÉNERO"].getValue():
+	for genre in detailsMD[DETAILLABELS[lang]["genres"]].getValue():
 		metadata.genres.add(genre)
 	#director
 	metadata.directors.clear()
-	for director in detailsMD["DIRECTOR"].getValue():
+	for director in detailsMD[DETAILLABELS[lang]["directors"]].getValue():
 		metadata.directors.add(director)
 	#writers
 	metadata.writers.clear()
-	for writer in detailsMD[u"GUIÓN"].getValue():
+	for writer in detailsMD[DETAILLABELS[lang]["writers"]].getValue():
 		metadata.writers.add(writer)
 	#studio
-	if len(detailsMD["PRODUCTORA"].getValue())>0:
-		metadata.studio = detailsMD["PRODUCTORA"].getValue()[0]
+	if len(detailsMD[DETAILLABELS[lang]["studio"]].getValue())>0:
+		metadata.studio = detailsMD[DETAILLABELS[lang]["studio"]].getValue()[0]
 	#Original Title
-	metadata.original_title = detailsMD[u"TÍTULO ORIGINAL"].getValue()
+	metadata.original_title = detailsMD[DETAILLABELS[lang]["original_title"]].getValue()
 	#Summary
-	metadata.summary = detailsMD["SINOPSIS"].getValue()
+	metadata.summary = detailsMD[DETAILLABELS[lang]["summary"]].getValue()
 	if reviews:
-		reviewText = detailsMD[u"CRÍTICAS"].getValue()
+		reviewText = detailsMD[DETAILLABELS[lang]["reviews"]].getValue()
 		if reviewText is not None:
 			metadata.summary = metadata.summary + reviewText
 	#rating
-	strrating = detailsMD[u"VALORACIÓN"].getValue()
+	strrating = detailsMD[DETAILLABELS[lang]["rating"]].getValue()
 	if strrating is not None:
 		metadata.rating = float(string.replace(strrating,",","."))
 	else:
@@ -598,26 +667,22 @@ class FilmAffinityAgent(Agent.Movies):
 		
 	#roles
 	metadata.roles.clear()
-	for person in detailsMD["REPARTO"].getValue():
+	for person in detailsMD[DETAILLABELS[lang]["roles"]].getValue():
 		role = metadata.roles.new()
 		role.actor = person
 
 	#Posters, photos, ...
-	himg = detailsMD["POSTER"].getValue()
-	limg = detailsMD["LOWPOSTER"].getValue()
-	imgs = detailsImg["IMAGENES"].getValue()
+	himg = detailsMD[DETAILLABELS[lang]["mainposter"]].getValue()
+	limg = detailsMD[DETAILLABELS[lang]["mainposterpreview"]].getValue()
+	imgs = detailsImg[DETAILLABELS[lang]["artwork"]].getValue()
 	p_order = 1
 	f_orden = 1
 
-	posters = []
-	arts = []
-	for i in range(len(POSTER_TYPES)):
-		posters.append([])
-	for i in range(len(ART_TYPES)):
-		arts.append([])
-	
+	posters = initPOSTERGROUPS(lang)
+	arts = initARTGROUPS(lang)
+
 	if himg is not None:
-		imgs.insert(0,[limg,himg,"Poster / Imagen Principal",""])
+		insertImage(imgs,0,limg,himg,MAINPOSTERLABELS[lang],"")
 	else:
 		Log(SOURCE+"No main poster in FilmAffinity")
 		
@@ -629,35 +694,14 @@ class FilmAffinityAgent(Agent.Movies):
 	
 	if (Prefs[PREF_IMGS]==PREF_IMGS_FA_ELSE_MDB) or (Prefs[PREF_IMGS]==PREF_IMGS_FA):
 		for img in imgs:
-			imgtype = img[2]
-			imgcountry = img[3]
-			imgtypecountry = None
-			if imgtype not in POSTER_TYPES and imgtype not in ART_TYPES:
-				imgtype = "default"
-				
-			if imgcountry is not None:
-				imgtypecountry = imgtype+" "+imgcountry
-	
-			if (imgtypecountry is not None) and (imgtypecountry in POSTER_TYPES):
-				hasPosters = True
-				group = POSTER_TYPES[imgtypecountry]
-				posters[group].append(img)
-			elif (imgtypecountry is not None) and (imgtypecountry in ART_TYPES):
-				group = ART_TYPES[imgtypecountry]
-				arts[group].append(img)
-			elif imgtype in POSTER_TYPES:
-				hasPosters = True
-				group = POSTER_TYPES[imgtype]
-				posters[group].append(img)
-			elif imgtype in ART_TYPES:
-				group = ART_TYPES[imgtype]
-				arts[group].append(img)
-		hasArt = (len(arts[ART_TYPES[u"Wallpapers España"]]) + len(arts[ART_TYPES["Wallpapers"]])) > 0
+			hasPosters = hasPosters or addImageToGroups(img,posters,arts,lang)
+		for idx in HASART_GROUPS[lang]:
+			hasArt = hasArt or (len(arts[idx]) > 0)
 
 	# Try ThemovieDB if FilmAffinity has no images
 	if (Prefs[PREF_IMGS]==PREF_IMGS_FA_ELSE_MDB) or (Prefs[PREF_IMGS]==PREF_IMGS_MDB):
 		try:
-			getImagesFromTheMovieDB(metadata,hasPosters,hasArt,posters,arts)
+			getImagesFromTheMovieDB(metadata,hasPosters,hasArt,posters,arts,lang)
 		except Exception, e:
 			Log(SOURCE+"Can't fetch images from TheMovieDB: "+str(e))
 		
@@ -667,8 +711,8 @@ class FilmAffinityAgent(Agent.Movies):
 	valid_names = list()
 	for group in posters:
 		for img in group:
-			imgsurl = img[0]
-			imglurl = img[1]
+			imgsurl = img["url_s"]
+			imglurl = img["url_l"]
 			addPoster(metadata,imgsurl,imglurl,i,valid_names)
 			i += 1
 	if i==1:
@@ -683,8 +727,8 @@ class FilmAffinityAgent(Agent.Movies):
 	valid_names = list()
 	for group in arts:
 		for img in group:
-			imgsurl = img[0]
-			imglurl = img[1]
+			imgsurl = img["url_s"]
+			imglurl = img["url_l"]
 			addArt(metadata,imgsurl,imglurl,i,valid_names)
 			i += 1
 
@@ -695,14 +739,58 @@ class FilmAffinityAgent(Agent.Movies):
 #		Log("[FilmAffinity Agent] : Exception "+str(e))
 #		Log("[FilmAffinity Agent] : Error when updating with "+finalURL)
 
-def isIn(urll,group):
+def initPOSTERGROUPS(lang):
+	posters = []
+	for i in range(len(POSTER_TYPES_LG[lang])):
+		posters.append([])
+	return posters
+
+def initARTGROUPS(lang):
+	arts = []
+	for i in range(len(ART_TYPES_LG[lang])):
+		arts.append([])
+	return arts
+
+def isInGroup(urll,group):
 	for img in group:
-		if img[1]==urll:
+		if img["url_l"]==urll:
 			return True
 	return False
 
+def addImageToGroups(img,posters,arts,lang):
+	isaPoster = False
+	imgtype = img["type_id"]
+	imgcountry = img["country"]
+	imgtypecountry = None
+	if imgtype not in POSTER_TYPES_LG[lang] and imgtype not in ART_TYPES_LG[lang]:
+		imgtype = "default"
+		
+	if imgcountry is not None:
+		imgtypecountry = imgtype+" "+imgcountry
 
-def getImagesFromTheMovieDB(metadata,hasposter,hasart,posters,arts):
+	if (imgtypecountry is not None) and (imgtypecountry in POSTER_TYPES_LG[lang]):
+		isaPoster = True
+		group = POSTER_TYPES_LG[lang][imgtypecountry]
+		posters[group].append(img)
+	elif (imgtypecountry is not None) and (imgtypecountry in ART_TYPES_LG[lang]):
+		group = ART_TYPES_LG[lang][imgtypecountry]
+		arts[group].append(img)
+	elif imgtype in POSTER_TYPES_LG[lang]:
+		isaPoster = True
+		group = POSTER_TYPES_LG[lang][imgtype]
+		posters[group].append(img)
+	elif imgtype in ART_TYPES_LG[lang]:
+		group = ART_TYPES_LG[lang][imgtype]
+		arts[group].append(img)
+	return isaPoster
+
+def appendImage(images, url_s, url_l, type_id, country):
+	images.append({"url_s" : url_s, "url_l" : url_l, "type_id" : type_id, "country" : country})
+
+def insertImage(images, idx, url_s, url_l, type_id, country):
+	images.insert(idx,{"url_s" : url_s, "url_l" : url_l, "type_id" : type_id, "country" : country})
+
+def getImagesFromTheMovieDB(metadata,hasposter,hasart,posters,arts,lang):
 	proxy = Proxy.Preview
 	if not hasposter or not hasart:
 		imdbid = origTitleToImdb(metadata)
@@ -713,18 +801,17 @@ def getImagesFromTheMovieDB(metadata,hasposter,hasart,posters,arts):
 			if not hasposter:
 				Log(SOURCE+"FilmAffinity hasn't got posters, trying themoviedb")
 				if 'posters' in tmdb_dict:
-					thmdbposters = posters[POSTER_TYPES["Poster / Imagen Principal"]]
+					thmdbposters = posters[POSTER_TYPES_LG[lang][MAINPOSTERLABELS[lang]]]
 					for p in tmdb_dict['posters']:
 						if p['image']['size'] == 'original':
-							if not isIn(p['image']['url'],thmdbposters):
+							if not isInGroup(p['image']['url'],thmdbposters):
 								p_id = p['image']['id']
 								for t in tmdb_dict['posters']:
 									if t['image']['id'] == p_id and t['image']['size'] == 'mid':
 										thumb = t['image']['url']
 										break
 								try: 
-									img = [thumb,p['image']['url'],"Poster / Imagen Principal",""]
-									thmdbposters.append(img)
+									appendImage(thmdbposters,thumb,p['image']['url'],MAINPOSTERLABELS[lang],"")
 								except: pass
 				else:
 					Log(SOURCE+"themoviedb hasn't got posters")
@@ -732,18 +819,17 @@ def getImagesFromTheMovieDB(metadata,hasposter,hasart,posters,arts):
 			if not hasart:
 				Log(SOURCE+"FilmAffinity hasn't got art, trying themoviedb")
 				if 'backdrops' in tmdb_dict:
-					thmdbart = arts[ART_TYPES["Wallpapers"]]
+					thmdbart = arts[ART_TYPES_LG[lang]["Wallpapers"]]
 					for b in tmdb_dict['backdrops']:
 						if b['image']['size'] == 'original':
-							if not isIn(b['image']['url'],thmdbart):
+							if not isInGroup(b['image']['url'],thmdbart):
 								b_id = b['image']['id']
 								for t in tmdb_dict['backdrops']:
 									if t['image']['id'] == b_id and t['image']['size'] == 'poster':
 										thumb = t['image']['url']
 										break
 								try: 
-									img = [thumb,b['image']['url'],"Wallpapers",""]
-									thmdbart.append(img)
+									appendImage(thmdbart,thumb,b['image']['url'],"Wallpapers","")
 								except: pass
 				else:
 					Log(SOURCE+"themoviedb hasn't got art")
@@ -818,11 +904,6 @@ def matchRatioLeven(uph1,uph2):
 	uph1 = String.StripDiacritics(uph1).lower()
 	uph2 = String.StripDiacritics(uph2).lower()
 	m = max(len(uph1),len(uph2))
-#	p = re.compile(r'\W+',flags=re.UNICODE)
-#	words1 = p.split(uph1)
-#	words2 = p.split(uph2)
-#	s = difflib.SequenceMatcher(None,words1,words2)
-#	return s.ratio()
 	levenratio = 1-(float(Util.LevenshteinDistance(uph1,uph2))/float(m))
 	return levenratio
 
@@ -923,7 +1004,7 @@ def getTitleFromUrl(url):
 
 
 def translate(result,lang):
-	title = getTitleFromUrl(FILMAFFINITY_DETAIL_URL % result.id)
+	title = getTitleFromUrl(FILMAFFINITY_DETAIL_URL % (lang,result.id))
 	if title is not None:
 		name, year = parseTitle(title)		
 		if name is not None:
